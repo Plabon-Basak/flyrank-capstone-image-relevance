@@ -17,6 +17,8 @@ def test_image_table_is_registered():
 
 
 def test_database_engine_configuration():
-    assert engine.dialect.name == "sqlite"
-    assert make_url(engine.url).database == "./image_matching_test.db"
+    configured_url = make_url(Settings().database_url)
+
+    assert engine.dialect.name == configured_url.get_backend_name()
+    assert make_url(engine.url) == configured_url
     assert SessionLocal.kw["bind"] is engine
