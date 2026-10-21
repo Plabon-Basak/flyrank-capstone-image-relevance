@@ -3,3 +3,6 @@
 
 class Base(DeclarativeBase):
     pass
+
+
+from app.models.image import Image
