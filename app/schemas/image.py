@@ -29,5 +29,6 @@ class ImageRead(BaseModel):
     attributes: dict | None
     caption: str | None
     confidence: float | None
+    review_required: bool
     status: str
     created_at: datetime

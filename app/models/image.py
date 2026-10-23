@@ -1,6 +1,7 @@
-﻿from datetime import datetime
+﻿
+from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -17,6 +18,9 @@ class Image(Base):
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    review_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="pending"
     )

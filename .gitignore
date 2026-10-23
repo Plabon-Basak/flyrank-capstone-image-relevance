@@ -9,3 +9,5 @@ __pycache__/
 htmlcov/
 .vscode/
 .idea/
+data/uploads/
+data/processed/
