@@ -12,7 +12,6 @@ class ImageMetadata(BaseModel):
     caption: str = Field(min_length=1, max_length=2000)
     confidence: float = Field(ge=0, le=1)
 
-
 class ImageCreate(ImageMetadata):
     filename: str = Field(min_length=1, max_length=255)
     file_path: str = Field(min_length=1, max_length=500)

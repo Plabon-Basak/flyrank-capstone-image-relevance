@@ -1,5 +1,5 @@
-﻿
-from collections.abc import Generator
+﻿from collections.abc import Generator
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import (
@@ -14,24 +14,30 @@ from fastapi import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.batch_job import BatchJob
-from app.schemas.batch_job import BatchJobCreate, BatchJobRead
-
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.models.batch_job import BatchJob
 from app.models.blog_post import BlogPost
 from app.models.image import Image
+from app.models.match_suggestion import MatchSuggestion
+from app.schemas.batch_job import BatchJobCreate, BatchJobRead
 from app.schemas.blog_post import BlogPostCreate, BlogPostRead
 from app.schemas.image import ImageCreate, ImageRead
+from app.schemas.match_suggestion import (
+    MatchSuggestionRead,
+    MatchSuggestionReview,
+)
+from app.services.batch_processor import process_batch_job
 from app.services.confidence_review import requires_review
-from app.services.image_storage import save_uploaded_image
-from app.services.metadata_provider import get_metadata_provider
 from app.services.embedding_provider import (
     LexicalEmbeddingProvider,
     OpenAIEmbeddingProvider,
 )
+from app.services.image_storage import save_uploaded_image
+from app.services.match_suggestion_service import save_match_suggestions
 from app.services.matching_service import MatchingService
-from app.services.batch_processor import process_batch_job
+from app.services.metadata_provider import get_metadata_provider
+
 
 app = FastAPI(
     title="Image Relevance & Auto-Tagging Engine",
@@ -214,6 +220,7 @@ async def analyze_image(
 
 
 
+
 @app.get("/images/{image_id}/matches")
 def match_image_to_blog_posts(
     image_id: int,
@@ -265,6 +272,25 @@ def match_image_to_blog_posts(
         )
 
         result = matching_service.match(image, blog_posts)
+
+        saved_suggestions = save_match_suggestions(
+            db=db,
+            image_id=image.id,
+            matches=result.get("matches", []),
+        )
+
+        result["matches"] = [
+            {
+                **match,
+                "suggestion_id": suggestion.id,
+                "review_status": suggestion.status,
+            }
+            for match, suggestion in zip(
+                result.get("matches", []),
+                saved_suggestions,
+                strict=True,
+            )
+        ]
 
         if provider_name == "lexical":
             result["matching_method"] = "lexical_baseline"
@@ -399,3 +425,68 @@ def get_batch_job(
         )
 
     return job
+
+@app.get(
+    "/match-suggestions",
+    response_model=list[MatchSuggestionRead],
+)
+def list_match_suggestions(
+    review_status: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if review_status is not None and review_status not in {
+        "pending",
+        "approved",
+        "rejected",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid review status.",
+        )
+
+    query = db.query(MatchSuggestion)
+
+    if review_status is not None:
+        query = query.filter(MatchSuggestion.status == review_status)
+
+    return query.order_by(MatchSuggestion.id).all()
+
+
+@app.post(
+    "/match-suggestions/{suggestion_id}/review",
+    response_model=MatchSuggestionRead,
+)
+def review_match_suggestion(
+    suggestion_id: int,
+    review: MatchSuggestionReview,
+    db: Session = Depends(get_db),
+):
+    suggestion = db.get(MatchSuggestion, suggestion_id)
+
+    if suggestion is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Match suggestion not found.",
+        )
+
+    if suggestion.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This suggestion has already been reviewed and "
+                "cannot be changed."
+            ),
+        )
+
+    suggestion.status = review.status
+    suggestion.decision_reason = review.decision_reason
+    suggestion.reviewed_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+        db.refresh(suggestion)
+    except Exception:
+        db.rollback()
+        raise
+
+    return suggestion
