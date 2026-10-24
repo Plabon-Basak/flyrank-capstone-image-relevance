@@ -1,11 +1,14 @@
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import patch
 
 from app.db.base import Base
 from app.main import app, get_db
+from app.services.embedding_provider import LexicalEmbeddingProvider
 
 
 @pytest.fixture
@@ -33,12 +36,17 @@ def client():
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
-    test_engine.dispose()
+    try:
+        with patch(
+            "app.main.get_embedding_provider",
+            return_value=LexicalEmbeddingProvider(),
+        ):
+            with TestClient(app) as test_client:
+                yield test_client
+    finally:
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()
 
 
 @pytest.fixture

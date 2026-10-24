@@ -3,6 +3,11 @@ import re
 from typing import Any
 
 from app.services.embedding_provider import EmbeddingProvider
+from app.services.embedding_text import (
+    blog_embedding_text,
+    generate_embedding,
+    image_embedding_text,
+)
 
 
 class MatchingService:
@@ -28,27 +33,13 @@ class MatchingService:
     def _normalize(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
-    @classmethod
-    def _image_text(cls, image: Any) -> str:
-        attributes = image.attributes or {}
-        attribute_text = " ".join(
-            f"{key} {value}" for key, value in attributes.items()
-        )
-
-        return " ".join(
-            str(part)
-            for part in (
-                image.subject,
-                image.category,
-                attribute_text,
-                image.caption,
-            )
-            if part
-        ).strip()
+    @staticmethod
+    def _image_text(image: Any) -> str:
+        return image_embedding_text(image)
 
     @staticmethod
     def _blog_text(post: Any) -> str:
-        return f"{post.title}\n{post.content}".strip()
+        return blog_embedding_text(post)
 
     @classmethod
     def _has_explicit_mismatch(cls, image: Any, post: Any) -> bool:
@@ -62,21 +53,11 @@ class MatchingService:
             return False
 
         subject_words = set(subject.split())
-        category_words = set(category.split())
         content_words = set(blog_text.split())
 
         known_subjects = {
-            "fox",
-            "wolf",
-            "dog",
-            "cat",
-            "lion",
-            "tiger",
-            "elephant",
-            "bird",
-            "horse",
-            "deer",
-            "bear",
+            "fox", "wolf", "dog", "cat", "lion", "tiger",
+            "elephant", "bird", "horse", "deer", "bear",
         }
 
         image_subjects = subject_words & known_subjects
@@ -105,12 +86,10 @@ class MatchingService:
             },
         }
 
-        normalized_category = category
-        category_terms = category_indicators.get(normalized_category)
+        category_terms = category_indicators.get(category)
 
-        if category_terms:
-            if not content_words.intersection(category_terms):
-                return True
+        if category_terms and not content_words.intersection(category_terms):
+            return True
 
         return False
 
@@ -133,6 +112,55 @@ class MatchingService:
             return 0.0
 
         return dot_product / (norm_a * norm_b)
+
+    def _get_embeddings(
+        self,
+        image: Any,
+        posts: list[Any],
+        image_text: str,
+    ) -> tuple[list[float], list[list[float]]]:
+        if getattr(
+            self.embedding_provider,
+            "supports_persistent_embeddings",
+            False,
+        ):
+            if image.embedding is None:
+                image.embedding = generate_embedding(
+                    self.embedding_provider,
+                    image_text,
+                )
+
+            missing_posts = [
+                post for post in posts if post.embedding is None
+            ]
+
+            if missing_posts:
+                texts = [self._blog_text(post) for post in missing_posts]
+                vectors = self.embedding_provider.embed(texts)
+
+                if len(vectors) != len(missing_posts):
+                    raise ValueError(
+                        "Embedding provider returned an unexpected number "
+                        "of vectors."
+                    )
+
+                for post, vector in zip(missing_posts, vectors, strict=True):
+                    if not vector:
+                        raise ValueError("Embedding provider returned an empty vector.")
+                    post.embedding = vector
+
+            return image.embedding, [post.embedding for post in posts]
+
+        texts = [image_text]
+        texts.extend(self._blog_text(post) for post in posts)
+        vectors = self.embedding_provider.embed(texts)
+
+        if len(vectors) != len(texts):
+            raise ValueError(
+                "Embedding provider returned an unexpected number of vectors."
+            )
+
+        return vectors[0], vectors[1:]
 
     def match(self, image: Any, blog_posts: list[Any]) -> dict:
         image_text = self._image_text(image)
@@ -176,20 +204,19 @@ class MatchingService:
                 "matches": [],
             }
 
-        texts = [image_text]
-        texts.extend(self._blog_text(post) for post in eligible_posts)
+        image_embedding, post_embeddings = self._get_embeddings(
+            image,
+            eligible_posts,
+            image_text,
+        )
 
-        embeddings = self.embedding_provider.embed(texts)
-
-        if len(embeddings) != len(texts):
-            raise ValueError(
-                "Embedding provider returned an unexpected number of vectors."
-            )
-
-        image_embedding = embeddings[0]
         results = []
 
-        for post, embedding in zip(eligible_posts, embeddings[1:]):
+        for post, embedding in zip(
+            eligible_posts,
+            post_embeddings,
+            strict=True,
+        ):
             similarity = self._cosine_similarity(
                 image_embedding,
                 embedding,

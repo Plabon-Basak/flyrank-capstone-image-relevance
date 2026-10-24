@@ -1,4 +1,3 @@
-
 from sqlalchemy.orm import Session
 
 from app.models.match_suggestion import MatchSuggestion

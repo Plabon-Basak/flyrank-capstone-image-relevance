@@ -1,234 +1,351 @@
 ﻿# Capstone Evidence
 
-This document maps the implementation to the capstone requirements.
-Statuses describe the evidence currently available in this repository.
-A passing unit test does not imply that an external production service
-or a complete real-world dataset has been demonstrated.
+This document maps the current implementation to the Image Relevance & Auto-Tagging Engine capstone requirements.
 
-## 1. Structured Metadata and Confidence
+Statuses reflect evidence actually observed during development. A passing unit test does not independently establish production readiness, real-world accuracy, or complete capstone compliance.
 
-**Status: Partial**
+## 1. Structured Metadata and Genuine Vision Analysis
+
+**Status: Partially verified — provider integration demonstrated**
+
+Implementation:
+- Gemini Vision integration for image analysis.
+- Structured metadata extraction.
+- Subject, category, attributes, caption, and confidence fields.
+- Metadata schema validation.
+- Confidence-based review logic.
 
 Evidence:
-- `tests/test_image_schema.py`
-  - `test_valid_image_metadata`
-  - `test_confidence_must_be_between_zero_and_one`
-  - `test_unknown_fields_are_rejected`
+- `app/services/metadata_provider.py`
 - `tests/test_metadata_provider.py`
-  - `test_mock_provider_returns_valid_metadata`
-  - `test_mock_provider_obeys_metadata_schema`
+- `tests/test_image_schema.py`
 - `tests/test_images_api.py`
-  - `test_analyze_image_persists_metadata_and_review_flag`
-  - Confidence boundary cases at 0.45, 0.69, 0.70, and 0.96.
+
+Manual integration evidence:
+
+A real image analysis request was performed using:
+
+`POST /images/3/analyze`
+
+The provider returned:
+
+- Subject: Nivea Men Fresh Active roll-on deodorant.
+- Category: Personal Care.
+- Confidence: 0.98.
+- Structured attributes and a generated caption.
+- Provider: Gemini.
 
 Limitation:
-The configured metadata provider is a mock provider. It does not inspect
-image pixels or perform real vision-model inference. Schema validation
-is implemented, but real vision output validation is not demonstrated.
+
+This demonstrates successful analysis for one test image. It does not establish accuracy across a diverse image dataset.
 
 ## 2. Low-Confidence Review
 
-**Status: Verified for the implemented threshold logic**
+**Status: Verified for implemented threshold logic**
 
 Evidence:
+- `app/services/confidence_review.py`
 - `tests/test_confidence_review.py`
-  - `test_requires_review`
-  - `test_custom_threshold`
 - `tests/test_images_api.py`
-  - `test_analyze_image_persists_metadata_and_review_flag`
 
-The default review boundary is 0.70: confidence values below 0.70
-require review; 0.70 and above do not under the tested configuration.
+The default review boundary is 0.70:
+
+- Confidence below 0.70 requires review.
+- Confidence at or above 0.70 does not require review under the tested configuration.
+
+Boundary cases include 0.45, 0.69, 0.70, and 0.96.
 
 ## 3. Batch Processing and Retries
 
-**Status: Partial**
+**Status: Partially verified**
+
+Implementation:
+- Batch-job creation and retrieval.
+- Progress and failure tracking.
+- Retry behavior.
+- Provider-aware processing.
 
 Evidence:
+- `app/services/batch_processor.py`
 - `tests/test_batch_jobs_api.py`
-  - Batch-job creation, retrieval, invalid payload, and missing-image tests.
 - `tests/test_batch_job_model.py`
-  - Default values and progress/failure tracking.
 - `tests/test_batch_processor.py`
-  - `test_process_batch_job_success`
-  - `test_process_batch_job_retries_missing_file`
-  - `test_process_batch_job_rejects_mock_metadata`
+
+Relevant tests:
+- `test_process_batch_job_success`
+- `test_process_batch_job_retries_missing_file`
+- `test_process_batch_job_rejects_mock_metadata`
 
 Limitation:
-Retry and failure-handling behavior is tested. A successful batch run
-using a genuine vision model across the required image corpus has not
-been demonstrated. Mock metadata is deliberately rejected as real
-image analysis.
+
+Batch-job behavior and retry handling are tested. A successful batch run using genuine Gemini Vision analysis across the required 40-image corpus has not been demonstrated.
 
 ## 4. Per-Call Vision and Embedding Cost Tracking
 
-**Status: Not implemented**
+**Status: Not implemented / not demonstrated**
 
-Per-call vision and embedding cost persistence and budget enforcement
-are not currently implemented.
+The project does not yet provide verified per-call cost attribution for vision and embedding requests.
 
-## 5. Image and Post Embeddings with Ranked Suggestions
+Outstanding work:
+- Record provider, model, request type, and usage for each AI call.
+- Persist estimated or provider-reported cost.
+- Track cumulative usage.
+- Enforce a configured spending budget.
+- Test budget-limit behavior.
 
-**Status: Partial**
+## 5. Image and Blog-Post Embeddings
 
-Evidence:
-- `tests/test_embedding_provider.py`
-  - `test_openai_provider_returns_embeddings_in_input_order`
-  - `test_openai_provider_returns_empty_list_without_api_call`
-  - `test_openai_provider_rejects_blank_text`
-- `tests/test_matching_service.py`
-  - `test_match_ranks_posts_by_similarity`
-  - `test_match_returns_no_match_below_threshold`
+**Status: Partially verified — persistent text-embedding pipeline implemented**
 
-Limitation:
-The local matching baseline uses lexical token statistics. The optional
-OpenAI provider generates text embeddings. A complete persisted image
-and post embedding lifecycle, including image embeddings, is not
-implemented or demonstrated.
-
-## 6. Semantic Matching
-
-**Status: Partial**
+Implementation:
+- Gemini Embedding provider.
+- Model: `gemini-embedding-001`.
+- Vector dimensions: 768.
+- Text generation from image metadata and captions.
+- Text generation from blog-post content.
+- Persistent embedding fields in PostgreSQL.
+- Backfill script for existing records.
 
 Evidence:
-- `tests/test_matching_service.py`
-  - `test_match_ranks_posts_by_similarity`
+- `app/services/embedding_provider.py`
+- `app/services/embedding_factory.py`
+- `app/services/gemini_embedding_provider.py`
+- `app/services/embedding_text.py`
+- `app/models/image.py`
+- `app/models/blog_post.py`
+- `migrations/versions/10f26b25f0e9_add_persistent_embeddings.py`
+- `scripts/backfill_embeddings.py`
 
-Limitation:
-The lexical baseline supports limited token normalization. It does not
-establish reliable semantic equivalence for concepts such as
-"red fox" and "Vulpes vulpes". The optional text-embedding provider
-does not provide image-pixel understanding.
+Manual verification:
+- Gemini embedding generation succeeded.
+- Image and blog-post vectors were generated.
+- Backfill saved one image embedding and one blog-post embedding.
+- Database inspection confirmed 768-dimensional persisted vectors.
+- Alembic reported migration `10f26b25f0e9` as the current head.
+
+Important limitation:
+
+These are text embeddings derived from image metadata and blog-post text. They are not direct embeddings of image pixels.
+
+The complete lifecycle still needs validation against the required dataset.
+
+## 6. Semantic Matching and Ranked Suggestions
+
+**Status: Partially verified — implementation operational, relevance quality not established**
+
+Implementation:
+- Persistent embedding lookup.
+- Semantic similarity calculation.
+- Ranked blog-post suggestions.
+- Similarity threshold and no-match behavior.
+- Lexical baseline retained as an alternative.
+
+Evidence:
+- `app/services/matching_service.py`
+- `app/services/embedding_text.py`
+- `tests/test_matching_service.py`
+
+Manual API verification:
+
+`GET /images/3/matches`
+
+returned a semantic match with similarity 0.663954.
+
+However, the analyzed image was a Nivea deodorant product and the matched article concerned red foxes.
+
+This is a likely false positive and demonstrates why similarity scores cannot be treated as proof of relevance.
+
+Outstanding work:
+- Evaluate a representative labeled dataset.
+- Calibrate the similarity threshold.
+- Improve false-positive rejection.
+- Report precision and recall on the required corpus.
 
 ## 7. Mismatch Guard
 
-**Status: Verified for the tested wolf/fox case**
+**Status: Verified for specific tested cases**
 
 Evidence:
+- `app/services/matching_service.py`
 - `tests/test_matching_service.py`
-  - `test_match_rejects_explicit_wolf_fox_mismatch`
+- `test_match_rejects_explicit_wolf_fox_mismatch`
 
 Limitation:
-The test demonstrates the specific implemented mismatch case.
-It does not establish comprehensive mismatch detection across all
-subjects and categories.
+
+The existing test verifies a specific wolf/fox mismatch. It does not establish comprehensive mismatch detection across all categories or subjects.
+
+Additional probes are required for broader coverage.
 
 ## 8. No-Confident-Match Behavior
 
-**Status: Verified for the matching threshold behavior**
+**Status: Verified for tested threshold behavior**
 
 Evidence:
 - `tests/test_matching_service.py`
-  - `test_match_returns_no_match_below_threshold`
-  - `test_match_handles_no_blog_posts`
+- `test_match_returns_no_match_below_threshold`
+- `test_match_handles_no_blog_posts`
 
-The matching service returns no match when no candidate reaches the
-configured threshold or when there are no candidate posts.
+The matching service returns no match when no candidate meets the configured threshold or when no candidate blog posts exist.
 
-## 9. Database Models, Relationships, and Indexes
+The threshold still requires calibration against real labeled data.
 
-**Status: Partial**
+## 9. Database Models, Relationships, and Migrations
 
-Implemented models include images, blog posts, batch jobs, and
-match suggestions. PostgreSQL persistence and Alembic migrations
-are part of the project.
+**Status: Partially verified**
+
+Implemented persistence includes:
+- Images.
+- Blog posts.
+- Batch jobs.
+- Match suggestions.
+- Persistent image embeddings.
+- Persistent blog-post embeddings.
 
 Evidence:
+- `app/models/`
+- `migrations/versions/`
 - `tests/test_database_config.py`
-  - `test_image_table_is_registered`
-  - `test_database_engine_configuration`
 - `tests/test_batch_job_model.py`
-  - Model default and failure-state tests.
-- `tests/test_matching_service.py`
-  - Matching behavior tests.
+
+Manual verification:
+- PostgreSQL connection succeeded.
+- Alembic migration applied successfully.
+- Current migration head: `10f26b25f0e9`.
+- Embedding fields were verified in the database.
 
 Limitation:
-This evidence does not establish that every database model, index,
-relationship, and persistence requirement in the capstone specification
-has been independently verified. Review the migrations and database
-schema before claiming full compliance.
+
+This evidence does not independently verify every relationship, index, constraint, or database requirement in the complete capstone specification.
 
 ## 10. API and Human Review Workflow
 
-**Status: Partial**
+**Status: Implemented and manually exercised; automated coverage incomplete**
 
-Implemented API routes include:
+Implemented routes include:
+
+- `GET /images`
+- `GET /images/{image_id}`
+- `POST /images`
+- `POST /images/upload`
+- `POST /images/{image_id}/analyze`
 - `GET /images/{image_id}/matches`
+- `POST /blog-posts`
+- `GET /blog-posts`
+- `GET /blog-posts/{post_id}`
+- `POST /batch-jobs`
+- `GET /batch-jobs/{job_id}`
 - `GET /match-suggestions`
 - `POST /match-suggestions/{suggestion_id}/review`
 
-The review workflow supports pending, approved, and rejected statuses,
-with an optional decision reason and protection against reviewing an
-already-reviewed suggestion.
+The review workflow supports:
+- Pending suggestions.
+- Approval.
+- Rejection.
+- Optional decision reasons.
+- Filtering by review status.
+- Protection against reviewing an already-reviewed suggestion.
 
 Evidence:
-The review workflow was implemented and manually exercised during
-development. The current collected pytest suite contains no dedicated
-match-suggestion review test module.
+- `app/services/match_suggestion_service.py`
+- `tests/`
+- Manual API testing through FastAPI Swagger documentation.
 
 Limitation:
-Add reproducible automated tests for listing, filtering, approving,
-rejecting, and duplicate-review protection before treating this
-workflow as fully test-verified.
+
+The review workflow has been manually exercised, but dedicated automated tests covering listing, filtering, approval, rejection, and duplicate-review protection should be added.
 
 ## 11. Labeled Evaluation Dataset
 
-**Status: Partial**
+**Status: Incomplete**
 
-Evidence:
+Existing evidence:
 - `scripts/evaluate.py`
 - Ten manually labeled synthetic evaluation cases.
-- README reports:
+- Development baseline metrics documented in README.md:
   - Top-1 precision: 7/10 = 70.0%.
   - Accepted matches: 5/10 = 50.0%.
   - Precision among accepted matches: 5/5 = 100.0%.
 
 Limitation:
-The synthetic evaluation does not meet the specified corpus requirement
-of at least 40 images across 4 or more categories and at least 10 posts
-with labeled correct images. The reported metrics are not production
-accuracy measurements.
 
-## 12. Documentation and Submission Files
+These figures describe the synthetic evaluation only. They are not production accuracy measurements and do not establish performance on the required real dataset.
 
-**Status: In progress**
+Outstanding dataset requirements:
+- At least 40 images.
+- At least four categories.
+- At least 10 blog posts.
+- Labeled correct image-to-post associations.
+- Reproducible evaluation using the actual matching pipeline.
 
-Present:
+## 12. Automated Test Suite
+
+**Status: Verified for the current recorded test run**
+
+Latest recorded result:
+
+```text
+87 passed, 1 warning in 17.22s
+```
+
+Additional verification:
+- `python -m compileall -q app scripts` completed successfully.
+- `git diff --check` completed without whitespace errors.
+
+The warning concerns a dependency deprecation and did not prevent the test suite from passing.
+
+Automated tests do not replace external-provider integration tests or real-dataset evaluation.
+
+## 13. Documentation and Submission Files
+
+**Status: Present; final review required**
+
+Project documentation:
 - `README.md`
-- `.env.example`
-- `capstone.yaml`
-- `EVIDENCE.md`
-
-Still to prepare:
 - `BUILDLOG.md`
+- `EVIDENCE.md`
+- `capstone.yaml`
+- `.env.example`
 
-The README documents setup, migrations, API routes, matching behavior,
-evaluation results, and current limitations.
+The README describes architecture, setup, API routes, provider configuration, matching behavior, testing, and known limitations.
+
+Final submission review should ensure that all documentation agrees with the actual implementation and that no secrets or local environment files are committed.
 
 ## Behavioral Probe Summary
 
 | Probe | Current evidence | Status |
 |---|---|---|
-| Batch processing with real vision metadata | Mock metadata is rejected; no real vision provider | Not demonstrated |
-| Red fox ranks above wolf and dog | Explicit wolf/fox mismatch unit test exists | Partial |
+| Genuine vision metadata extraction | Gemini Vision manually tested on one image | Partially verified |
+| Batch processing with real vision metadata | Batch behavior tested; required real corpus not demonstrated | Partial |
+| Red fox ranks above wolf and dog | Specific mismatch test exists; full ranking not established | Partial |
 | Wolf candidate rejected for fox | `test_match_rejects_explicit_wolf_fox_mismatch` | Verified for this case |
 | No suitable image returns no match | No-match threshold tests | Verified for tested cases |
-| Evaluation reproduces README metrics | `scripts/evaluate.py` provides a synthetic evaluation | Reproducible baseline |
-| Every AI call has cost attribution | Cost tracking is not implemented | Not implemented |
+| Persistent embeddings | 768-dimensional image metadata and blog-post text embeddings verified in PostgreSQL | Verified for tested records |
+| Semantic relevance quality | A likely false positive was observed in live matching | Not established |
+| Evaluation reproduces synthetic metrics | `scripts/evaluate.py` and ten synthetic cases | Development baseline |
+| Every AI call has cost attribution | No verified per-call cost accounting | Not implemented |
 
-## Final Notes
+## Final Assessment
 
-The project is a working backend prototype with API, persistence,
-upload validation, confidence review logic, batch-job scaffolding,
-matching, and a match-suggestion review workflow.
+The project is a functioning backend prototype with:
 
-The following major capstone requirements remain incomplete or
-not demonstrated:
-- Genuine image vision inference.
-- Required 40-image and 10-post labeled corpus.
-- Complete persisted image/post embedding lifecycle.
-- Per-call AI cost tracking and budget enforcement.
-- Full behavioral verification using the required real dataset.
+- FastAPI APIs.
+- PostgreSQL persistence and Alembic migrations.
+- Image upload and validation.
+- Gemini Vision metadata extraction.
+- Gemini text-embedding integration.
+- Persistent 768-dimensional embeddings.
+- Ranked matching and mismatch-guard logic.
+- Batch-job scaffolding and retries.
+- Match-suggestion review workflow.
+- Automated tests.
 
-Do not interpret a passing automated test suite as proof that these
-remaining requirements have been completed.
+The following major capstone requirements remain incomplete or insufficiently demonstrated:
+
+1. Required labeled dataset of at least 40 images across four categories and at least 10 blog posts.
+2. Reliable matching quality demonstrated through real-dataset evaluation.
+3. Broader false-positive and behavioral probe validation.
+4. Full batch processing verification on the required corpus.
+5. Per-call vision and embedding cost tracking.
+6. Budget enforcement.
+
+The current implementation should be described as an operational prototype, not a fully validated production-ready image-matching system.

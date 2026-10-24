@@ -1,6 +1,8 @@
-﻿from collections.abc import Generator
+﻿
+from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
 
 from fastapi import (
     BackgroundTasks,
@@ -27,16 +29,25 @@ from app.schemas.match_suggestion import (
     MatchSuggestionRead,
     MatchSuggestionReview,
 )
+from app.services.api_usage_tracker import APIUsageTracker
 from app.services.batch_processor import process_batch_job
 from app.services.confidence_review import requires_review
+from app.services.embedding_factory import get_embedding_provider
 from app.services.embedding_provider import (
     LexicalEmbeddingProvider,
     OpenAIEmbeddingProvider,
+)
+from app.services.embedding_text import (
+    blog_embedding_text,
+    generate_embedding,
 )
 from app.services.image_storage import save_uploaded_image
 from app.services.match_suggestion_service import save_match_suggestions
 from app.services.matching_service import MatchingService
 from app.services.metadata_provider import get_metadata_provider
+
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -134,7 +145,10 @@ def list_images(db: Session = Depends(get_db)):
 
 
 @app.get("/images/{image_id}", response_model=ImageRead)
-def get_image(image_id: int, db: Session = Depends(get_db)):
+def get_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+):
     image = db.get(Image, image_id)
 
     if image is None:
@@ -166,7 +180,12 @@ async def analyze_image(
         )
 
     try:
-        provider = get_metadata_provider()
+        usage_tracker = APIUsageTracker(db)
+
+        metadata_provider = get_metadata_provider(
+            usage_tracker=usage_tracker,
+            image_id=image.id,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -174,8 +193,12 @@ async def analyze_image(
         ) from exc
 
     try:
-        metadata = await provider.generate_metadata(image.file_path)
+        metadata = await metadata_provider.generate_metadata(image.file_path)
     except Exception as exc:
+        logger.exception(
+            "Image metadata analysis failed for image_id=%s",
+            image_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Image metadata analysis failed.",
@@ -200,15 +223,51 @@ async def analyze_image(
         image.caption = metadata.caption
         image.confidence = metadata.confidence
         image.review_required = requires_review(metadata.confidence)
+
+        if settings.embedding_provider.strip().lower() == "gemini":
+            usage_tracker = APIUsageTracker(db)
+
+            embedding_provider = get_embedding_provider(
+                usage_tracker=usage_tracker,
+                image_id=image.id,
+            )
+
+            image_text = " ".join(
+                str(part)
+                for part in (
+                    image.subject,
+                    image.category,
+                    " ".join(
+                        f"{key} {value}"
+                        for key, value in (image.attributes or {}).items()
+                    ),
+                    image.caption,
+                )
+                if part
+            ).strip()
+
+            image.embedding = generate_embedding(
+                embedding_provider,
+                image_text,
+            )
+
         image.status = "completed"
 
         db.commit()
         db.refresh(image)
+
     except Exception as exc:
         db.rollback()
+        logger.exception(
+            "Image metadata or embedding persistence failed for image_id=%s",
+            image_id,
+        )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Analysis results could not be saved.",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Image metadata or embedding generation failed. "
+                "The analysis results were not saved."
+            ),
         ) from exc
 
     return {
@@ -217,8 +276,6 @@ async def analyze_image(
         "review_required": image.review_required,
         "metadata": metadata.model_dump(),
     }
-
-
 
 
 @app.get("/images/{image_id}/matches")
@@ -237,7 +294,15 @@ def match_image_to_blog_posts(
     provider_name = settings.embedding_provider.strip().lower()
 
     try:
-        if provider_name == "openai":
+        if provider_name == "gemini":
+            usage_tracker = APIUsageTracker(db)
+
+            embedding_provider = get_embedding_provider(
+                usage_tracker=usage_tracker,
+                image_id=image.id,
+            )
+
+        elif provider_name == "openai":
             if not settings.embedding_api_key.strip():
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -246,18 +311,16 @@ def match_image_to_blog_posts(
                         "to be configured."
                     ),
                 )
+
             embedding_provider = OpenAIEmbeddingProvider()
+
         elif provider_name == "lexical":
             embedding_provider = LexicalEmbeddingProvider()
+
         else:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "Semantic matching is not configured. Set "
-                    "EMBEDDING_PROVIDER=lexical for the local text baseline or "
-                    "EMBEDDING_PROVIDER=openai and configure EMBEDDING_API_KEY "
-                    "for OpenAI embeddings."
-                ),
+                detail="Semantic matching is not configured.",
             )
 
         blog_posts = (
@@ -272,6 +335,13 @@ def match_image_to_blog_posts(
         )
 
         result = matching_service.match(image, blog_posts)
+
+        if getattr(
+            embedding_provider,
+            "supports_persistent_embeddings",
+            False,
+        ):
+            db.commit()
 
         saved_suggestions = save_match_suggestions(
             db=db,
@@ -302,13 +372,26 @@ def match_image_to_blog_posts(
         return result
 
     except HTTPException:
+        db.rollback()
         raise
+
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Semantic matching failed for image_id=%s",
+            image_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Semantic matching failed.",
+        ) from exc
 
 
 @app.post(
@@ -321,24 +404,54 @@ def create_blog_post(
     db: Session = Depends(get_db),
 ):
     post = BlogPost(**post_data.model_dump())
-    db.add(post)
 
     try:
+        db.add(post)
+        db.flush()
+
+        if settings.embedding_provider.strip().lower() == "gemini":
+            usage_tracker = APIUsageTracker(db)
+
+            embedding_provider = get_embedding_provider(
+                usage_tracker=usage_tracker,
+                blog_post_id=post.id,
+            )
+
+            post.embedding = generate_embedding(
+                embedding_provider,
+                blog_embedding_text(post),
+            )
+
         db.commit()
         db.refresh(post)
-    except Exception:
+
+    except Exception as exc:
         db.rollback()
+        logger.exception("Blog post creation or embedding failed")
+
+        if settings.embedding_provider.strip().lower() == "gemini":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Blog post embedding generation or saving failed.",
+            ) from exc
+
         raise
 
     return post
 
 
-@app.get("/blog-posts", response_model=list[BlogPostRead])
+@app.get(
+    "/blog-posts",
+    response_model=list[BlogPostRead],
+)
 def list_blog_posts(db: Session = Depends(get_db)):
     return db.query(BlogPost).order_by(BlogPost.id).all()
 
 
-@app.get("/blog-posts/{post_id}", response_model=BlogPostRead)
+@app.get(
+    "/blog-posts/{post_id}",
+    response_model=BlogPostRead,
+)
 def get_blog_post(
     post_id: int,
     db: Session = Depends(get_db),
@@ -399,6 +512,7 @@ def create_batch_job(
         db.commit()
         db.refresh(job)
         job_id = job.id
+
     except Exception:
         db.rollback()
         raise
@@ -425,6 +539,7 @@ def get_batch_job(
         )
 
     return job
+
 
 @app.get(
     "/match-suggestions",
@@ -485,6 +600,7 @@ def review_match_suggestion(
     try:
         db.commit()
         db.refresh(suggestion)
+
     except Exception:
         db.rollback()
         raise

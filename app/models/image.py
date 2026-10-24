@@ -18,6 +18,9 @@ class Image(Base):
     attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(
+    JSON, nullable=True
+    )
     review_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

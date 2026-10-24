@@ -1,4 +1,4 @@
-
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +9,8 @@ from app.db.session import SessionLocal
 from app.models.batch_job import BatchJob
 from app.models.image import Image
 from app.services.confidence_review import requires_review
+from app.services.embedding_factory import get_embedding_provider
+from app.services.embedding_text import generate_embedding
 from app.services.metadata_provider import get_metadata_provider
 
 
@@ -31,7 +33,12 @@ def process_batch_job(
         db.commit()
 
         try:
-            provider = get_metadata_provider()
+            metadata_provider = get_metadata_provider()
+            embedding_provider = (
+                get_embedding_provider()
+                if settings.embedding_provider.strip().lower() == "gemini"
+                else None
+            )
         except ValueError as exc:
             job.status = "failed"
             job.last_error = str(exc)
@@ -62,10 +69,8 @@ def process_batch_job(
                             "Image file could not be found on disk."
                         )
 
-                    import asyncio
-
                     metadata = asyncio.run(
-                        provider.generate_metadata(image.file_path)
+                        metadata_provider.generate_metadata(image.file_path)
                     )
 
                     if metadata.attributes.get("provider") == "mock":
@@ -81,32 +86,59 @@ def process_batch_job(
                     image.review_required = requires_review(
                         metadata.confidence
                     )
+
+                    if embedding_provider is not None:
+                        image.embedding = generate_embedding(
+                            embedding_provider,
+                            " ".join(
+                                str(part)
+                                for part in (
+                                    image.subject,
+                                    image.category,
+                                    " ".join(
+                                        f"{key} {value}"
+                                        for key, value in (
+                                            image.attributes or {}
+                                        ).items()
+                                    ),
+                                    image.caption,
+                                )
+                                if part
+                            ).strip(),
+                        )
+
                     image.status = "completed"
+                    db.commit()
 
                     succeeded = True
                     break
 
                 except Exception as exc:
+                    db.rollback()
                     last_error = str(exc)
 
                     if attempt < job.max_retries:
+                        job = db.get(BatchJob, job_id)
                         job.retry_count += 1
                         db.commit()
+
+            job = db.get(BatchJob, job_id)
 
             if succeeded:
                 job.processed_items += 1
                 errors.pop(str(image_id), None)
             else:
                 job.failed_items += 1
-                errors[str(image_id)] = last_error or "Unknown processing error."
+                errors[str(image_id)] = (
+                    last_error or "Unknown processing error."
+                )
                 job.last_error = errors[str(image_id)]
 
             job.error_details = errors
             db.commit()
 
-        job.status = (
-            "completed" if job.failed_items == 0 else "failed"
-        )
+        job = db.get(BatchJob, job_id)
+        job.status = "completed" if job.failed_items == 0 else "failed"
         job.completed_at = datetime.now(timezone.utc)
         db.commit()
 

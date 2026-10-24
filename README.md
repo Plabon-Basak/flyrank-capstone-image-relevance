@@ -1,8 +1,10 @@
+
+
 # Image Relevance & Auto-Tagging Engine
 
-A FastAPI backend prototype for image metadata management, confidence review, batch-processing workflows, and matching images to relevant blog posts.
+A FastAPI backend for automated image metadata extraction, confidence-based review, batch processing, and matching images with relevant blog posts using AI-powered text embeddings.
 
-**Current matching implementation:** A local lexical baseline using TF-IDF-style token statistics. It does not perform neural image understanding or true semantic image embedding.
+The project integrates **Google Gemini Vision** for image metadata analysis and **Google Gemini Embedding** for semantic text matching. It uses PostgreSQL to persist image records, blog posts, embeddings, batch jobs, and match suggestions.
 
 ## Features
 
@@ -10,15 +12,20 @@ A FastAPI backend prototype for image metadata management, confidence review, ba
 - PostgreSQL persistence using SQLAlchemy.
 - Database schema migrations with Alembic.
 - Image upload with file validation and configurable upload-size limits.
-- Structured image metadata schema with confidence scores.
-- Low-confidence review flagging.
+- AI-powered image metadata extraction using Gemini Vision.
+- Structured metadata containing subjects, categories, attributes, captions, and confidence scores.
+- Low-confidence metadata review flagging.
 - Blog-post creation and retrieval.
-- Image-to-blog-post ranking using a configurable similarity threshold.
+- Gemini text embeddings for image metadata and blog-post content.
+- Persistent 768-dimensional embeddings stored in PostgreSQL.
+- Semantic similarity matching using cosine similarity.
+- Lexical matching baseline as an alternative provider.
 - Explicit mismatch guard for supported animal subjects and selected categories.
+- Configurable similarity threshold and no-match behavior.
 - Batch-job API with retry and failure-handling logic.
-- Local lexical matching baseline and optional OpenAI text-embedding provider.
 - Persisted match suggestions with approval and rejection workflows.
 - Review-status filtering for match suggestions.
+- Embedding backfill script for existing records.
 - Automated tests using pytest.
 - A reproducible, 10-case synthetic evaluation script.
 
@@ -31,16 +38,23 @@ flowchart TD
     B --> D[Matching Service]
     B --> E[Batch Processing Service]
     B --> K[Match Suggestion Review]
+
     C --> F[(PostgreSQL)]
     E --> F
     K --> F
-    D --> G[Lexical Matching Provider]
-    D --> H[Optional OpenAI Text Embedding Provider]
-    G --> D
-    H --> D
-    D --> I[Ranked Matches or No Match]
-    D --> K
-    E --> J[Retry and Failure Handling]
+
+    C --> G[Gemini Vision Provider]
+    G --> C
+
+    D --> H[Embedding Provider]
+    H --> I[Gemini Embedding]
+    H --> J[Lexical Baseline]
+
+    I --> F
+    D --> F
+    D --> L[Cosine Similarity]
+    L --> M[Ranked Matches or No Match]
+    M --> K
 ```
 
 ## Technology Stack
@@ -52,8 +66,10 @@ flowchart TD
 - PostgreSQL
 - Alembic
 - Pillow
+- Google Gen AI SDK
+- Gemini Vision
+- Gemini Embedding
 - pytest
-- OpenAI Python SDK (optional embedding provider)
 
 ## Prerequisites
 
@@ -61,6 +77,7 @@ flowchart TD
 - PostgreSQL
 - Git
 - Windows PowerShell or an equivalent terminal
+- Google Gemini API key for AI-powered metadata analysis and embeddings
 
 ## Local Setup
 
@@ -91,26 +108,39 @@ Create a local `.env` file based on `.env.example`.
 
 Configure the PostgreSQL connection for a database you have created. Do not commit `.env` or put passwords and API keys in source control.
 
-Relevant settings include:
+For Gemini-powered analysis and semantic matching, configure the relevant settings:
+
+```dotenv
+METADATA_PROVIDER=gemini
+GEMINI_VISION_MODEL=gemini-3.8-flash
+
+EMBEDDING_PROVIDER=gemini
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+EMBEDDING_DIMENSIONS=768
+```
+
+Other relevant settings include:
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | SQLAlchemy PostgreSQL connection string |
 | `UPLOAD_DIR` | Directory for uploaded image files |
 | `MAX_UPLOAD_SIZE_MB` | Maximum permitted upload size |
-| `METADATA_PROVIDER` | Metadata provider configuration |
+| `METADATA_PROVIDER` | Metadata provider selection |
+| `GEMINI_API_KEY` | Gemini API authentication |
+| `GEMINI_VISION_MODEL` | Gemini vision model selection |
 | `EMBEDDING_PROVIDER` | Matching provider selection |
+| `GEMINI_EMBEDDING_MODEL` | Gemini embedding model selection |
+| `EMBEDDING_DIMENSIONS` | Embedding vector dimensions |
 | `MATCHING_THRESHOLD` | Minimum similarity for accepting a match |
-| `EMBEDDING_API_KEY` | Optional API key for OpenAI embeddings |
-| `EMBEDDING_MODEL` | OpenAI embedding model name |
 
-For local matching, use:
+The lexical provider can be selected as an alternative:
 
 ```dotenv
 EMBEDDING_PROVIDER=lexical
 ```
 
-The current default metadata provider is a mock provider. A mock response is not real image analysis.
+Keep API keys and database credentials private. Gemini API usage may be subject to quotas and charges depending on the account and model.
 
 ### 5. Apply database migrations
 
@@ -144,20 +174,87 @@ Use Swagger UI to inspect request schemas and execute API requests.
 | GET | `/images` | List image records |
 | GET | `/images/{image_id}` | Retrieve an image record |
 | POST | `/images/{image_id}/analyze` | Request image metadata analysis |
-| GET | `/images/{image_id}/matches` | Rank blog posts for an image and persist match suggestions |
+| GET | `/images/{image_id}/matches` | Rank blog posts and persist match suggestions |
 | POST | `/blog-posts` | Create a blog post |
 | GET | `/blog-posts` | List blog posts |
 | GET | `/blog-posts/{post_id}` | Retrieve a blog post |
 | POST | `/batch-jobs` | Create a batch job |
 | GET | `/batch-jobs/{job_id}` | Retrieve batch-job status |
-| GET | `/match-suggestions` | List match suggestions, optionally filtered by review status |
-| POST | `/match-suggestions/{suggestion_id}/review` | Approve or reject a pending match suggestion |
+| GET | `/match-suggestions` | List match suggestions with optional review-status filtering |
+| POST | `/match-suggestions/{suggestion_id}/review` | Approve or reject a pending suggestion |
 
-### Match-suggestion review
+## Image Analysis
 
-The matching endpoint can create persisted suggestions linking images to relevant blog posts. Suggestions initially use the `pending` status.
+The image analysis workflow uses Gemini Vision to extract structured metadata from uploaded images.
 
-The review endpoint supports these decisions:
+The generated metadata can include:
+
+- Subject
+- Category
+- Attributes
+- Dominant colors
+- Objects
+- Visual details
+- Image caption
+- Confidence score
+
+The confidence score is used by the application to determine whether an image requires additional review.
+
+The metadata provider can be configured through environment variables.
+
+## Semantic Matching
+
+The matching pipeline uses text representations of image metadata and blog-post content.
+
+### Embedding generation
+
+The Gemini embedding provider uses:
+
+- Model: `gemini-embedding-001`
+- Embedding dimensions: 768
+- Task type: `SEMANTIC_SIMILARITY`
+
+For image records, the embedding input is generated from available metadata and captions. For blog posts, it is generated from the post content.
+
+**These are text embeddings derived from image metadata, not direct visual embeddings generated from image pixels.**
+
+### Persistent embeddings
+
+Embeddings are stored in PostgreSQL alongside their associated image and blog-post records.
+
+The application can reuse persisted embeddings during matching rather than regenerating every vector for every request.
+
+For existing records, the backfill script can generate and save missing embeddings:
+
+```powershell
+python -m scripts.backfill_embeddings
+```
+
+### Matching workflow
+
+The matching service:
+
+1. Builds text from available image metadata.
+2. Retrieves or generates the relevant embeddings.
+3. Excludes candidates that trigger the explicit mismatch guard.
+4. Computes cosine similarity between eligible image and blog-post vectors.
+5. Ranks eligible blog posts by similarity.
+6. Returns accepted matches only when they meet the configured threshold.
+7. Returns `no_match` when no eligible candidate reaches the threshold.
+8. Returns `review_required` when image confidence is missing or below the configured minimum.
+9. Persists match suggestions for subsequent review.
+
+The lexical baseline remains available as an alternative matching provider. It uses token-based similarity and simple normalization, but cannot reliably recognize synonyms or understand image contents.
+
+A similarity score alone does not establish that a match is genuinely relevant. Matching quality must be evaluated against a representative, independently labeled dataset.
+
+## Match-Suggestion Review
+
+The matching endpoint can create persisted suggestions linking images to blog posts.
+
+New suggestions initially use the `pending` status.
+
+The review endpoint supports:
 
 - `approved`
 - `rejected`
@@ -175,7 +272,7 @@ Example request:
 
 A suggestion that has already been reviewed cannot be reviewed again through the review endpoint. The API returns `409 Conflict` for an attempt to review it again.
 
-To filter suggestions by review status, use the `review_status` query parameter:
+To filter suggestions by review status:
 
 ```text
 GET /match-suggestions?review_status=pending
@@ -183,26 +280,21 @@ GET /match-suggestions?review_status=approved
 GET /match-suggestions?review_status=rejected
 ```
 
-Valid filter values are `pending`, `approved`, and `rejected`. An empty list is returned when no suggestions match the requested status.
+Valid filter values are `pending`, `approved`, and `rejected`.
 
-## Matching Behavior
+## Batch Processing
 
-The matching service:
+The batch-job API provides a workflow for processing multiple image records.
 
-1. Builds text from available image metadata.
-2. Excludes candidates that trigger the explicit mismatch guard.
-3. Computes similarity using the configured matching provider.
-4. Ranks eligible blog posts by similarity.
-5. Returns accepted matches only when they meet the configured threshold.
-6. Returns `no_match` when no eligible candidate reaches the threshold.
-7. Returns `review_required` when image confidence is missing or below the configured minimum.
-8. Persists match suggestions so they can be reviewed and filtered by status.
+Implemented functionality includes:
 
-The local lexical baseline uses token statistics and simple plural normalization. It is lightweight and suitable for demonstrating the matching pipeline, but it cannot reliably recognize synonyms or infer image contents from pixels.
+- Batch-job creation.
+- Job status retrieval.
+- Processing progress and failure tracking.
+- Retry and failure-handling logic.
+- Integration with the configured metadata and embedding providers.
 
-For example, `fox` and `foxes` can be normalized to a common token. This does not guarantee that scientific names such as `Vulpes vulpes` will match correctly.
-
-The optional OpenAI embedding provider generates text embeddings. Text embeddings can improve text-based matching, but they do not independently provide image-pixel understanding.
+A full-scale production batch evaluation with a representative image dataset remains outstanding.
 
 ## Automated Tests
 
@@ -212,7 +304,17 @@ Run the complete test suite:
 python -m pytest -q
 ```
 
-The project has passed **84 automated tests** during development. Run the test suite on the current checkout to confirm the latest state.
+Latest verified test result:
+
+**87 passed, 1 warning.**
+
+The warning relates to a dependency deprecation and did not prevent the tests from passing.
+
+Also check Python compilation:
+
+```powershell
+python -m compileall -q app scripts
+```
 
 ## Evaluation
 
@@ -233,19 +335,18 @@ Evaluation date: 23 October 2026.
 | Accepted matches | 5/10 = 50.0% |
 | Precision among accepted matches | 5/5 = 100.0% |
 
-These figures come from a small, manually labeled synthetic dataset. They are not evidence of production performance, and the accepted-match precision estimate is based on only five accepted cases.
+These results come from a small, manually labeled synthetic dataset. They are not evidence of production performance. In particular, the accepted-match precision estimate is based on only five accepted cases.
 
-The evaluation script provides a reproducible baseline, not a substitute for evaluation on a representative, independently labeled dataset.
+The synthetic evaluation provides a reproducible baseline, not a substitute for evaluation on a representative, independently labeled dataset.
 
 ## Current Limitations
 
-- **Image understanding:** The configured mock metadata provider does not perform real vision-model inference.
-- **Embeddings:** The lexical baseline is not a neural semantic embedding model. The optional OpenAI provider generates text embeddings, not image embeddings.
-- **Persisted vectors:** The current matching flow computes vectors during matching; it does not yet provide a complete persisted image/post embedding lifecycle.
-- **Batch processing:** Mock metadata is deliberately rejected as real analysis, so successful production-quality image analysis requires a genuine metadata provider.
-- **Evaluation:** The current benchmark is small and synthetic.
-- **Confidence review:** Low-confidence image metadata can be flagged for review. Additional integration may be needed for a complete human-review interface.
+- **Matching quality:** Semantic matching has been exercised, but representative dataset evaluation is still needed to establish relevance accuracy.
+- **Visual embeddings:** The current embedding pipeline uses text derived from image metadata and captions, not direct image-pixel embeddings.
+- **Dataset size:** The required larger labeled image and blog-post dataset has not yet been established.
+- **Batch evaluation:** The full multi-image batch workflow with genuine vision inference needs further validation.
 - **Cost tracking:** Per-call vision and embedding cost persistence and budget enforcement are not yet implemented.
+- **Human review:** The API supports confidence flags and match-suggestion decisions; a dedicated human-review interface is not included.
 - **Production readiness:** Authentication, authorization, rate limiting, deployment configuration, and operational monitoring require further work.
 
 ## Security and Data Handling
@@ -259,9 +360,11 @@ The evaluation script provides a reproducible baseline, not a substitute for eva
 
 ## Project Status
 
-This repository is an actively developed backend capstone prototype. The API, PostgreSQL integration, image upload and storage, metadata-analysis workflow, lexical matching baseline, batch-job scaffolding, and persisted match-suggestion review workflow are implemented. The automated test suite has passed 84 tests during development, and the review-status filters and duplicate-review protection have been verified through the live API.
+The project implements a FastAPI backend with PostgreSQL persistence, image upload and storage, Gemini Vision metadata analysis, Gemini text embeddings, persisted embedding records, semantic matching, batch-job workflows, and a match-suggestion review API.
 
-Real vision inference, a complete persisted embedding lifecycle, cost accounting, and production deployment hardening remain additional implementation work.
+The Gemini integration and embedding persistence have been manually verified, and the automated test suite has passed 87 tests.
+
+The next major validation priorities are building the required labeled dataset, evaluating matching quality on that dataset, validating multi-image batch processing with genuine vision inference, and implementing API usage and cost tracking.
 
 ## License
 
