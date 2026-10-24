@@ -3,7 +3,10 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
-from app.services.api_usage_tracker import APIUsageTracker
+from app.services.api_usage_tracker import (
+    APIUsageTracker,
+    GEMINI_EMBEDDING_OPERATION,
+)
 
 
 class GeminiEmbeddingProvider:
@@ -43,6 +46,8 @@ class GeminiEmbeddingProvider:
             for text in texts
         ):
             raise ValueError("Embedding inputs must be non-empty strings.")
+
+        APIUsageTracker.preflight((GEMINI_EMBEDDING_OPERATION,))
 
         usage_id = None
 

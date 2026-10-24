@@ -1,9 +1,10 @@
-
-.venv/
+﻿.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+.env.*
+!.env.example
 *.log
 .coverage
 htmlcov/
@@ -11,3 +12,4 @@ htmlcov/
 .idea/
 data/uploads/
 data/processed/
+*.bak

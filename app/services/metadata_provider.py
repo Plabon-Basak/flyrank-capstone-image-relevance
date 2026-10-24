@@ -7,7 +7,10 @@ from PIL import Image
 
 from app.core.config import settings
 from app.schemas.image import ImageMetadata
-from app.services.api_usage_tracker import APIUsageTracker
+from app.services.api_usage_tracker import (
+    APIUsageTracker,
+    GEMINI_VISION_OPERATION,
+)
 
 
 VISION_MAX_OUTPUT_TOKENS = 512
@@ -55,6 +58,8 @@ class GeminiMetadataProvider(MetadataProvider):
         self.image_id = image_id
 
     async def generate_metadata(self, image_path: str) -> ImageMetadata:
+        APIUsageTracker.preflight((GEMINI_VISION_OPERATION,))
+
         prompt = """
 Analyze this image for a blog image relevance and auto-tagging system.
 

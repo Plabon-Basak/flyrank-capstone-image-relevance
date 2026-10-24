@@ -27,7 +27,7 @@ The project integrates **Google Gemini Vision** for image metadata analysis and 
 - Review-status filtering for match suggestions.
 - Embedding backfill script for existing records.
 - Automated tests using pytest.
-- A reproducible, 10-case synthetic evaluation script.
+- A reproducible, 10-case synthetic evaluation script (text-only lexical baseline; does not evaluate real images, Gemini embeddings, API endpoints, database persistence, or the full pipeline).
 
 ## Architecture
 
@@ -306,7 +306,7 @@ python -m pytest -q
 
 Latest verified test result:
 
-**87 passed, 1 warning.**
+**105 passed, 1 warning.**
 
 The warning relates to a dependency deprecation and did not prevent the tests from passing.
 
@@ -335,9 +335,9 @@ Evaluation date: 23 October 2026.
 | Accepted matches | 5/10 = 50.0% |
 | Precision among accepted matches | 5/5 = 100.0% |
 
-These results come from a small, manually labeled synthetic dataset. They are not evidence of production performance. In particular, the accepted-match precision estimate is based on only five accepted cases.
+These results come from a small, manually labeled synthetic text-only dataset using the lexical baseline. They do not evaluate real image files, Gemini embeddings, API endpoints, or database persistence. They are not evidence of production performance. In particular, the accepted-match precision estimate is based on only five accepted cases.
 
-The synthetic evaluation provides a reproducible baseline, not a substitute for evaluation on a representative, independently labeled dataset.
+The synthetic evaluation provides a reproducible baseline, not a substitute for evaluation on a representative, independently labeled dataset of at least 40 images across at least four categories.
 
 ## Current Limitations
 
@@ -345,7 +345,7 @@ The synthetic evaluation provides a reproducible baseline, not a substitute for 
 - **Visual embeddings:** The current embedding pipeline uses text derived from image metadata and captions, not direct image-pixel embeddings.
 - **Dataset size:** The required larger labeled image and blog-post dataset has not yet been established.
 - **Batch evaluation:** The full multi-image batch workflow with genuine vision inference needs further validation.
-- **Cost tracking:** Per-call vision and embedding cost persistence and budget enforcement are not yet implemented.
+- **Cost tracking:** API usage and cost tracking are partially implemented (vision/embedding reservations, cost calculation, budget checks, and persistence). Batch processing and backfill do not yet fully participate in tracked cost accounting.
 - **Human review:** The API supports confidence flags and match-suggestion decisions; a dedicated human-review interface is not included.
 - **Production readiness:** Authentication, authorization, rate limiting, deployment configuration, and operational monitoring require further work.
 
@@ -364,8 +364,11 @@ The project implements a FastAPI backend with PostgreSQL persistence, image uplo
 
 The Gemini integration and embedding persistence have been manually verified, and the automated test suite has passed 87 tests.
 
-The next major validation priorities are building the required labeled dataset, evaluating matching quality on that dataset, validating multi-image batch processing with genuine vision inference, and implementing API usage and cost tracking.
+The next major validation priorities are building the required labeled dataset (at least 40 images across at least four categories and at least 10 labeled blog posts), evaluating matching quality on that dataset using the actual pipeline, validating multi-image batch processing with genuine vision inference, and completing cost tracking coverage across batch and backfill workflows.
 
 ## License
 
 See [LICENSE](LICENSE).
+
+
+**Dataset licensing/provenance:** Development/test corpus of placeholder images from Lorem Picsum endpoints. Individual original image URLs and photographer identities were not recorded, and individual image licenses have not been verified. Images must NOT be described as public domain, openly licensed, or copyright-free. See data/eval/manifest.json for recorded source/attribution/provenance.

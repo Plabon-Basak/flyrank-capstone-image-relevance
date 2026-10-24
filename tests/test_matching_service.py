@@ -133,6 +133,56 @@ def test_match_requires_review_for_low_confidence_image():
     assert provider.received_texts is None
 
 
+def test_match_requires_review_for_confidence_below_seventy():
+    provider = FakeEmbeddingProvider([])
+    service = MatchingService(provider)
+
+    result = service.match(
+        make_image(confidence=0.69),
+        [make_post()],
+    )
+
+    assert result["status"] == "review_required"
+    assert result["matches"] == []
+    assert provider.received_texts is None
+
+
+def test_match_allows_matching_at_confidence_seventy():
+    provider = FakeEmbeddingProvider(
+        [
+            [1.0, 0.0],
+            [0.8, 0.6],
+        ]
+    )
+    service = MatchingService(provider, threshold=0.35)
+
+    result = service.match(
+        make_image(confidence=0.70),
+        [make_post()],
+    )
+
+    assert result["status"] == "matched"
+    assert provider.received_texts is not None
+
+
+def test_match_allows_matching_above_seventy():
+    provider = FakeEmbeddingProvider(
+        [
+            [1.0, 0.0],
+            [0.8, 0.6],
+        ]
+    )
+    service = MatchingService(provider, threshold=0.35)
+
+    result = service.match(
+        make_image(confidence=0.96),
+        [make_post()],
+    )
+
+    assert result["status"] == "matched"
+    assert provider.received_texts is not None
+
+
 def test_match_handles_no_blog_posts():
     provider = FakeEmbeddingProvider([])
     service = MatchingService(provider)

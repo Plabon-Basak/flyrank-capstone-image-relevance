@@ -10,6 +10,17 @@ from app.services.embedding_provider import LexicalEmbeddingProvider
 from app.services.matching_service import MatchingService
 
 
+"""
+LIMITATIONS (synthetic baseline only):
+- This script evaluates a synthetic, text-only lexical baseline.
+- It does NOT evaluate real image files, Gemini embeddings, API endpoints,
+  database persistence, batch processing, or the complete production pipeline.
+- The dataset used here is manually labeled synthetic text only (10 cases).
+- These results do not satisfy a 40-image / 4-category labeled dataset
+  requirement and do not represent production accuracy.
+"""
+
+
 CASES = [
     {
         "subject": "Red fox",

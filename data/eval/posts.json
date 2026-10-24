@@ -1,0 +1,104 @@
+[
+  {
+    "id": "wildlife_red_foxes",
+    "title": "Red Foxes in Forest Habitats",
+    "content": "Red foxes are wild mammals that live in forests and grasslands. They hunt small mammals and birds.",
+    "category": "wildlife",
+    "relevant_images": [
+      "red_fox"
+    ]
+  },
+  {
+    "id": "wildlife_gray_wolves",
+    "title": "Gray Wolves and Their Natural Habitats",
+    "content": "Gray wolves are wild animals that hunt in packs and live in forests and mountains.",
+    "category": "wildlife",
+    "relevant_images": [
+      "wolf",
+      "wolf2"
+    ]
+  },
+  {
+    "id": "wildlife_cats",
+    "title": "Domestic Cats and Their Behavior",
+    "content": "Domestic cats are familiar companion animals known for their independent behavior and hunting instincts.",
+    "category": "wildlife",
+    "relevant_images": [
+      "cat",
+      "cat2"
+    ]
+  },
+  {
+    "id": "wildlife_lions",
+    "title": "Lions in African Grasslands",
+    "content": "Lions are wild cats that live in prides on African grasslands as apex predators.",
+    "category": "wildlife",
+    "relevant_images": [
+      "lion"
+    ]
+  },
+  {
+    "id": "wildlife_elephants",
+    "title": "Elephants and Wildlife Conservation",
+    "content": "Elephants are large wild mammals that play important roles in their ecosystems and need conservation.",
+    "category": "wildlife",
+    "relevant_images": [
+      "elephant"
+    ]
+  },
+  {
+    "id": "tech_computers",
+    "title": "Choosing a Laptop Computer",
+    "content": "Laptop computers are portable devices used for work and study. Consider processing power and battery life.",
+    "category": "technology",
+    "relevant_images": [
+      "laptop",
+      "chromebook"
+    ]
+  },
+  {
+    "id": "tech_smartphones",
+    "title": "Smartphone Applications and Mobile Technology",
+    "content": "Smartphones run mobile applications and provide access to digital services.",
+    "category": "technology",
+    "relevant_images": [
+      "smartphone",
+      "smartphone2"
+    ]
+  },
+  {
+    "id": "food_recipes",
+    "title": "Homemade Vegetable and Pizza Recipes",
+    "content": "Cooking with fresh vegetables and making pizza at home uses quality ingredients.",
+    "category": "food",
+    "relevant_images": [
+      "vegetables",
+      "pizza",
+      "salad"
+    ]
+  },
+  {
+    "id": "travel_cities",
+    "title": "Exploring Major Cities and Landmarks",
+    "content": "Traveling to cities like Paris and Rome offers opportunities to see famous landmarks including the Eiffel Tower.",
+    "category": "travel",
+    "relevant_images": [
+      "eiffel",
+      "rome",
+      "cathedral",
+      "times_square"
+    ]
+  },
+  {
+    "id": "travel_nature",
+    "title": "Outdoor Adventures in Nature",
+    "content": "Exploring natural wonders like mountains, beaches, canyons provides hiking opportunities.",
+    "category": "travel",
+    "relevant_images": [
+      "mountains",
+      "beach",
+      "canyon",
+      "bridge"
+    ]
+  }
+]

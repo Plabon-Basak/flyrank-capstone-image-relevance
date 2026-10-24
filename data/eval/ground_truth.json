@@ -1,0 +1,112 @@
+[
+  {
+    "image_id": "red_fox",
+    "post_id": "wildlife_red_foxes",
+    "relevant": true
+  },
+  {
+    "image_id": "wolf",
+    "post_id": "wildlife_gray_wolves",
+    "relevant": true
+  },
+  {
+    "image_id": "wolf2",
+    "post_id": "wildlife_gray_wolves",
+    "relevant": true
+  },
+  {
+    "image_id": "cat",
+    "post_id": "wildlife_cats",
+    "relevant": true
+  },
+  {
+    "image_id": "cat2",
+    "post_id": "wildlife_cats",
+    "relevant": true
+  },
+  {
+    "image_id": "lion",
+    "post_id": "wildlife_lions",
+    "relevant": true
+  },
+  {
+    "image_id": "elephant",
+    "post_id": "wildlife_elephants",
+    "relevant": true
+  },
+  {
+    "image_id": "laptop",
+    "post_id": "tech_computers",
+    "relevant": true
+  },
+  {
+    "image_id": "chromebook",
+    "post_id": "tech_computers",
+    "relevant": true
+  },
+  {
+    "image_id": "smartphone",
+    "post_id": "tech_smartphones",
+    "relevant": true
+  },
+  {
+    "image_id": "smartphone2",
+    "post_id": "tech_smartphones",
+    "relevant": true
+  },
+  {
+    "image_id": "vegetables",
+    "post_id": "food_recipes",
+    "relevant": true
+  },
+  {
+    "image_id": "pizza",
+    "post_id": "food_recipes",
+    "relevant": true
+  },
+  {
+    "image_id": "salad",
+    "post_id": "food_recipes",
+    "relevant": true
+  },
+  {
+    "image_id": "eiffel",
+    "post_id": "travel_cities",
+    "relevant": true
+  },
+  {
+    "image_id": "rome",
+    "post_id": "travel_cities",
+    "relevant": true
+  },
+  {
+    "image_id": "cathedral",
+    "post_id": "travel_cities",
+    "relevant": true
+  },
+  {
+    "image_id": "times_square",
+    "post_id": "travel_cities",
+    "relevant": true
+  },
+  {
+    "image_id": "mountains",
+    "post_id": "travel_nature",
+    "relevant": true
+  },
+  {
+    "image_id": "beach",
+    "post_id": "travel_nature",
+    "relevant": true
+  },
+  {
+    "image_id": "canyon",
+    "post_id": "travel_nature",
+    "relevant": true
+  },
+  {
+    "image_id": "bridge",
+    "post_id": "travel_nature",
+    "relevant": true
+  }
+]

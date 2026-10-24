@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.main import app, get_db
 from app.schemas.image import ImageMetadata
+from app.services import api_usage_tracker
 from app.services.embedding_provider import LexicalEmbeddingProvider
 
 
@@ -59,12 +60,16 @@ def client(tmp_path, monkeypatch):
     app.dependency_overrides[get_db] = override_get_db
 
     try:
-        with patch(
-            "app.main.get_embedding_provider",
-            return_value=LexicalEmbeddingProvider(),
-        ):
-            with TestClient(app) as test_client:
-                yield test_client
+        with patch.object(api_usage_tracker.settings, "gemini_vision_input_cost_per_million_tokens", 0.75), \
+             patch.object(api_usage_tracker.settings, "gemini_vision_output_cost_per_million_tokens", 3.75), \
+             patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+             patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+            with patch(
+                "app.main.get_embedding_provider",
+                return_value=LexicalEmbeddingProvider(),
+            ):
+                with TestClient(app) as test_client:
+                    yield test_client
     finally:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(bind=test_engine)

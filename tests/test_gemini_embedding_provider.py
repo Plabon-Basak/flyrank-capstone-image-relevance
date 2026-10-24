@@ -1,10 +1,11 @@
 
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
+from app.services import api_usage_tracker
 from app.services.api_usage_tracker import PricingNotConfiguredError
 from app.services.gemini_embedding_provider import GeminiEmbeddingProvider
 
@@ -40,13 +41,15 @@ def test_gemini_embedding_returns_vectors():
         )
     )
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        model="test-model",
-        dimensions=3,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            model="test-model",
+            dimensions=3,
+        )
 
-    result = provider.embed(["first text", "second text"])
+        result = provider.embed(["first text", "second text"])
 
     assert result == [
         [0.1, 0.2, 0.3],
@@ -58,23 +61,27 @@ def test_gemini_embedding_returns_vectors():
 def test_gemini_embedding_empty_input_does_not_call_api():
     models = FakeModels()
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        dimensions=3,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            dimensions=3,
+        )
 
-    assert provider.embed([]) == []
+        assert provider.embed([]) == []
     assert models.calls == []
 
 
 def test_gemini_embedding_rejects_blank_input():
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(FakeModels()),
-        dimensions=3,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(FakeModels()),
+            dimensions=3,
+        )
 
-    with pytest.raises(ValueError):
-        provider.embed(["   "])
+        with pytest.raises(ValueError):
+            provider.embed(["   "])
 
 
 def test_gemini_embedding_rejects_wrong_dimensions():
@@ -86,13 +93,15 @@ def test_gemini_embedding_rejects_wrong_dimensions():
         )
     )
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        dimensions=3,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            dimensions=3,
+        )
 
-    with pytest.raises(ValueError):
-        provider.embed(["test"])
+        with pytest.raises(ValueError):
+            provider.embed(["test"])
 
 
 def test_gemini_embedding_records_provider_usage(monkeypatch):
@@ -113,15 +122,17 @@ def test_gemini_embedding_records_provider_usage(monkeypatch):
         )
     )
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        model="test-model",
-        dimensions=3,
-        usage_tracker=tracker,
-        image_id=25,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            model="test-model",
+            dimensions=3,
+            usage_tracker=tracker,
+            image_id=25,
+        )
 
-    result = provider.embed(["test image"])
+        result = provider.embed(["test image"])
 
     assert result == [[0.1, 0.2, 0.3]]
 
@@ -147,14 +158,18 @@ def test_gemini_embedding_rejects_unconfigured_pricing(monkeypatch):
 
     models = FakeModels()
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        dimensions=3,
-        usage_tracker=tracker,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            dimensions=3,
+            usage_tracker=tracker,
+        )
 
-    with pytest.raises(PricingNotConfiguredError):
-        provider.embed(["test image"])
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.0), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        with pytest.raises(PricingNotConfiguredError):
+            provider.embed(["test image"])
 
     assert models.calls == []
     tracker.reserve.assert_not_called()
@@ -173,14 +188,16 @@ def test_gemini_embedding_records_failed_api_call(monkeypatch):
         error=RuntimeError("Gemini API unavailable")
     )
 
-    provider = GeminiEmbeddingProvider(
-        client=FakeClient(models),
-        dimensions=3,
-        usage_tracker=tracker,
-    )
+    with patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        provider = GeminiEmbeddingProvider(
+            client=FakeClient(models),
+            dimensions=3,
+            usage_tracker=tracker,
+        )
 
-    with pytest.raises(RuntimeError, match="Gemini API unavailable"):
-        provider.embed(["test image"])
+        with pytest.raises(RuntimeError, match="Gemini API unavailable"):
+            provider.embed(["test image"])
 
     tracker.reserve.assert_called_once()
     tracker.fail.assert_called_once_with(

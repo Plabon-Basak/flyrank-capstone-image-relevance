@@ -81,17 +81,15 @@ Limitation:
 Batch-job behavior and retry handling are tested. A successful batch run using genuine Gemini Vision analysis across the required 40-image corpus has not been demonstrated.
 
 ## 4. Per-Call Vision and Embedding Cost Tracking
+**Status: Partially implemented**
 
-**Status: Not implemented / not demonstrated**
-
-The project does not yet provide verified per-call cost attribution for vision and embedding requests.
+The project provides per-call cost calculation, reservation with budget checks, and persistence via `api_usage`. Vision and embedding requests are tracked in API paths; batch processing and backfill do not yet participate fully in tracked cost accounting.
 
 Outstanding work:
-- Record provider, model, request type, and usage for each AI call.
-- Persist estimated or provider-reported cost.
-- Track cumulative usage.
-- Enforce a configured spending budget.
-- Test budget-limit behavior.
+
+- Extend tracking to batch processing and backfill workflows.
+- Add usage/cost inspection endpoints.
+- Expand budget-enforcement coverage and tests.
 
 ## 5. Image and Blog-Post Embeddings
 
@@ -259,7 +257,7 @@ The review workflow has been manually exercised, but dedicated automated tests c
 **Status: Incomplete**
 
 Existing evidence:
-- `scripts/evaluate.py`
+- `scripts/evaluate.py` (synthetic, text-only lexical baseline)
 - Ten manually labeled synthetic evaluation cases.
 - Development baseline metrics documented in README.md:
   - Top-1 precision: 7/10 = 70.0%.
@@ -268,7 +266,7 @@ Existing evidence:
 
 Limitation:
 
-These figures describe the synthetic evaluation only. They are not production accuracy measurements and do not establish performance on the required real dataset.
+These figures describe a synthetic, text-only lexical baseline only. They do not evaluate real image files, Gemini embeddings, API endpoints, database persistence, or the full pipeline. They are not production accuracy measurements and do not establish performance on the required real dataset.
 
 Outstanding dataset requirements:
 - At least 40 images.
@@ -284,7 +282,7 @@ Outstanding dataset requirements:
 Latest recorded result:
 
 ```text
-87 passed, 1 warning in 17.22s
+105 passed, 1 warning in 9.39s
 ```
 
 Additional verification:
@@ -322,7 +320,7 @@ Final submission review should ensure that all documentation agrees with the act
 | Persistent embeddings | 768-dimensional image metadata and blog-post text embeddings verified in PostgreSQL | Verified for tested records |
 | Semantic relevance quality | A likely false positive was observed in live matching | Not established |
 | Evaluation reproduces synthetic metrics | `scripts/evaluate.py` and ten synthetic cases | Development baseline |
-| Every AI call has cost attribution | No verified per-call cost accounting | Not implemented |
+| Every AI call has cost attribution | Partially implemented; batch and backfill not fully tracked | Partial |
 
 ## Final Assessment
 
@@ -342,10 +340,12 @@ The project is a functioning backend prototype with:
 The following major capstone requirements remain incomplete or insufficiently demonstrated:
 
 1. Required labeled dataset of at least 40 images across four categories and at least 10 blog posts.
-2. Reliable matching quality demonstrated through real-dataset evaluation.
+2. Reliable matching quality demonstrated through real-dataset evaluation using the actual pipeline.
 3. Broader false-positive and behavioral probe validation.
 4. Full batch processing verification on the required corpus.
-5. Per-call vision and embedding cost tracking.
-6. Budget enforcement.
+5. Complete cost tracking coverage (batch and backfill) and usage inspection endpoints.
+6. Broader budget enforcement coverage.
 
 The current implementation should be described as an operational prototype, not a fully validated production-ready image-matching system.
+
+**Dataset licensing/provenance:** Development/test placeholder images from Lorem Picsum endpoints. Individual original URLs and photographer identities not recorded; individual licenses not verified. Not public domain/openly licensed/copyright-free. See data/eval/manifest.json for details.

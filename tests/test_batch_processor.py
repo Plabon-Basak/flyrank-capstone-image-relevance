@@ -1,5 +1,6 @@
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,6 +11,7 @@ from app.db.base import Base
 from app.models.batch_job import BatchJob
 from app.models.image import Image
 from app.schemas.image import ImageMetadata
+from app.services import api_usage_tracker
 from app.services.batch_processor import process_batch_job
 
 
@@ -90,7 +92,11 @@ def test_process_batch_job_success(database, tmp_path, monkeypatch):
         lambda: FakeMetadataProvider(),
     )
 
-    process_batch_job(job_id, database)
+    with patch.object(api_usage_tracker.settings, "gemini_vision_input_cost_per_million_tokens", 0.75), \
+         patch.object(api_usage_tracker.settings, "gemini_vision_output_cost_per_million_tokens", 3.75), \
+         patch.object(api_usage_tracker.settings, "gemini_embedding_cost_per_million_characters", 0.00015), \
+         patch.object(api_usage_tracker.settings, "api_budget_usd", 5.0):
+        process_batch_job(job_id, database)
 
     with database() as db:
         job = db.get(BatchJob, job_id)

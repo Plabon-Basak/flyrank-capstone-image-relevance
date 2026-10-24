@@ -163,6 +163,11 @@ class MatchingService:
         return vectors[0], vectors[1:]
 
     def match(self, image: Any, blog_posts: list[Any]) -> dict:
+        from app.services.confidence_review import (
+            DEFAULT_CONFIDENCE_THRESHOLD,
+            requires_match_review,
+        )
+
         image_text = self._image_text(image)
 
         if not image_text:
@@ -176,9 +181,9 @@ class MatchingService:
                 "matches": [],
             }
 
-        if (
-            image.confidence is None
-            or image.confidence < self.minimum_image_confidence
+        if requires_match_review(
+            image.confidence,
+            threshold=DEFAULT_CONFIDENCE_THRESHOLD,
         ):
             return {
                 "image_id": image.id,

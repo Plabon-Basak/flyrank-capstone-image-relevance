@@ -29,7 +29,12 @@ from app.schemas.match_suggestion import (
     MatchSuggestionRead,
     MatchSuggestionReview,
 )
-from app.services.api_usage_tracker import APIUsageTracker
+from app.services.api_usage_tracker import (
+    APIUsageTracker,
+    GEMINI_EMBEDDING_OPERATION,
+    GEMINI_VISION_OPERATION,
+    PricingNotConfiguredError,
+)
 from app.services.batch_processor import process_batch_job
 from app.services.confidence_review import requires_review
 from app.services.embedding_factory import get_embedding_provider
@@ -180,12 +185,20 @@ async def analyze_image(
         )
 
     try:
+        if settings.metadata_provider.strip().lower() == "gemini":
+            APIUsageTracker.preflight((GEMINI_VISION_OPERATION,))
+
         usage_tracker = APIUsageTracker(db)
 
         metadata_provider = get_metadata_provider(
             usage_tracker=usage_tracker,
             image_id=image.id,
         )
+    except PricingNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -194,6 +207,11 @@ async def analyze_image(
 
     try:
         metadata = await metadata_provider.generate_metadata(image.file_path)
+    except PricingNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         logger.exception(
             "Image metadata analysis failed for image_id=%s",
@@ -225,6 +243,15 @@ async def analyze_image(
         image.review_required = requires_review(metadata.confidence)
 
         if settings.embedding_provider.strip().lower() == "gemini":
+            try:
+                APIUsageTracker.preflight((GEMINI_EMBEDDING_OPERATION,))
+            except PricingNotConfiguredError as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(exc),
+                ) from exc
+
             usage_tracker = APIUsageTracker(db)
 
             embedding_provider = get_embedding_provider(
@@ -246,10 +273,17 @@ async def analyze_image(
                 if part
             ).strip()
 
-            image.embedding = generate_embedding(
-                embedding_provider,
-                image_text,
-            )
+            try:
+                image.embedding = generate_embedding(
+                    embedding_provider,
+                    image_text,
+                )
+            except PricingNotConfiguredError as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(exc),
+                ) from exc
 
         image.status = "completed"
 
@@ -343,24 +377,27 @@ def match_image_to_blog_posts(
         ):
             db.commit()
 
-        saved_suggestions = save_match_suggestions(
-            db=db,
-            image_id=image.id,
-            matches=result.get("matches", []),
-        )
-
-        result["matches"] = [
-            {
-                **match,
-                "suggestion_id": suggestion.id,
-                "review_status": suggestion.status,
-            }
-            for match, suggestion in zip(
-                result.get("matches", []),
-                saved_suggestions,
-                strict=True,
+        if result.get("status") == "matched":
+            saved_suggestions = save_match_suggestions(
+                db=db,
+                image_id=image.id,
+                matches=result.get("matches", []),
             )
-        ]
+
+            result["matches"] = [
+                {
+                    **match,
+                    "suggestion_id": suggestion.id,
+                    "review_status": suggestion.status,
+                }
+                for match, suggestion in zip(
+                    result.get("matches", []),
+                    saved_suggestions,
+                    strict=True,
+                )
+            ]
+        else:
+            result["matches"] = []
 
         if provider_name == "lexical":
             result["matching_method"] = "lexical_baseline"
@@ -403,9 +440,17 @@ def create_blog_post(
     post_data: BlogPostCreate,
     db: Session = Depends(get_db),
 ):
-    post = BlogPost(**post_data.model_dump())
-
     try:
+        if settings.embedding_provider.strip().lower() == "gemini":
+            try:
+                APIUsageTracker.preflight((GEMINI_EMBEDDING_OPERATION,))
+            except PricingNotConfiguredError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(exc),
+                ) from exc
+
+        post = BlogPost(**post_data.model_dump())
         db.add(post)
         db.flush()
 
@@ -417,14 +462,24 @@ def create_blog_post(
                 blog_post_id=post.id,
             )
 
-            post.embedding = generate_embedding(
-                embedding_provider,
-                blog_embedding_text(post),
-            )
+            try:
+                post.embedding = generate_embedding(
+                    embedding_provider,
+                    blog_embedding_text(post),
+                )
+            except PricingNotConfiguredError as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(exc),
+                ) from exc
 
         db.commit()
         db.refresh(post)
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
         logger.exception("Blog post creation or embedding failed")
